@@ -19,14 +19,27 @@ Backend outages often appear as “server slow” or “app stuck.” OS tools i
 ## How It Works
 
 ```bash
-ps -ef | grep java          # process, PID, PPID, command
-top -H -p <pid>             # per-thread CPU view
-free -h                     # memory and swap summary
-vmstat 1                    # runnable, blocked, swap, CPU signals over time
-iostat -xz 1                # storage latency/throughput indicators
-df -h ; du -sh *            # filesystem space versus directory use
-lsof -p <pid>               # files/sockets held by process
-strace -f -p <pid>          # system calls; use carefully in production
+# Process & Thread Inspection
+ps -ef | grep -E "python|java" # Find PID, PPID, and command line
+top -H -p <pid>                # Per-thread CPU & memory usage
+pidstat -u 1 -p <pid>          # CPU usage breakdown (user vs system/kernel time)
+pstree -p <pid>                # Visualize parent-child process tree
+
+# Memory & Swap Diagnostics
+free -h                        # Total, used, free RAM and swap memory
+vmstat 1 5                     # System-wide runnable/blocked tasks, swap, and context switches
+cat /proc/<pid>/status         # VmRSS (Resident Set Size), VmSize, and thread count
+cat /proc/<pid>/smaps_rollup   # PSS (Proportional Set Size) for accurate memory tracking
+
+# Storage, Files & Sockets
+df -h ; du -sh *               # Filesystem partition capacity vs folder usage
+lsof -p <pid>                  # Open file descriptors, sockets, and unlinked files
+lsof +L1                       # Find deleted-but-open files still consuming disk space
+ss -tulpn                      # Listening TCP/UDP sockets with process PIDs
+
+# Kernel & System Call Tracing
+strace -c -p <pid>             # Summary of syscall counts, errors, and time spent in kernel
+strace -f -e trace=network,file -p <pid> # Trace specific syscall categories
 ```
 
 ## Important Terminology

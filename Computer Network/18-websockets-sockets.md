@@ -18,15 +18,78 @@ Real-time dashboards, chat, collaboration, gaming, and notifications need server
 
 ## How It Works
 
-1. Client sends HTTP request with `Upgrade: websocket`.
-2. Server accepts with `101 Switching Protocols` if policy allows.
-3. Both exchange framed WebSocket messages over the persistent connection.
-4. Heartbeats, auth expiry, backpressure, reconnects, and fan-out are application responsibilities.
+### 1. TCP Socket System Call Lifecycle
 
 ```text
-Browser -- HTTP Upgrade --> Gateway -- TCP/TLS --> Service
-Browser <== WebSocket messages ==> Gateway <==> Service
+Server Socket Lifecycle:
+  socket() ──► bind(addr, port) ──► listen(backlog) ──► accept() [blocks]
+                                                            │
+Client Socket Lifecycle:                                   │ (new client_fd created)
+  socket() ──────────────────────► connect(addr, port) ────┘
+                                        │
+                         send() / recv() [bidirectional]
+                                        │
+                                     close()
 ```
+
+#### Python TCP Socket Example
+```python
+import socket
+
+# TCP Server
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.bind(('0.0.0.0', 8080))
+server.listen(128) # Backlog queue size
+
+conn, client_addr = server.accept() # Blocks until client connects
+data = conn.recv(1024)
+conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello")
+conn.close()
+```
+
+#### Java TCP Socket Example
+```java
+import java.io.*;
+import java.net.*;
+
+public class SimpleTcpServer {
+    public static void main(String[] args) throws IOException {
+        try (ServerSocket server = new ServerSocket(8080)) {
+            Socket client = server.accept(); // Blocks until connection
+            BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+            PrintWriter out = new PrintWriter(client.getOutputStream(), true);
+
+            String requestLine = in.readLine();
+            out.println("HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello Socket!");
+        }
+    }
+}
+```
+
+---
+
+### 2. The WebSocket Upgrade Handshake
+
+A WebSocket starts its life as a standard HTTP/1.1 request over TCP/TLS:
+
+```http
+Client Request:
+GET /chat HTTP/1.1
+Host: server.example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Sec-WebSocket-Version: 13
+
+Server Response:
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+```
+
+Once the `101 Switching Protocols` response is received, the HTTP parser is turned off. Both parties exchange lightweight WebSocket binary/text frames over the persistent TCP stream with minimal 2-to-10 byte framing overhead (eliminating repeated HTTP headers).
 
 ## Important Components / Terminology
 

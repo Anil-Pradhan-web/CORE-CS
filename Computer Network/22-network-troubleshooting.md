@@ -53,13 +53,33 @@ One client fails while another succeeds: compare DNS answer, source network, VPN
 
 ## Important Properties
 
-| Command | Best first use |
-|---|---|
-| `ping` | Basic ICMP reachability/RTT, if permitted |
-| `traceroute` / `tracert` | Path hints, not proof of full path |
-| `dig` | DNS records and resolver response |
-| `ss` / `netstat` | Local listeners/connections |
-| `tcpdump` | Packet-level evidence with care for sensitive data |
+### Production Troubleshooting Commands Cheatsheet
+
+| Layer | Tool | Production Command | Diagnostic Intent |
+|---|---|---|---|
+| **DNS** | `dig` | `dig +trace +nodnssec example.com A` | Trace full DNS delegation chain to find stale records |
+| **Routing / IP** | `mtr` | `mtr --report --report-cycles 10 1.1.1.1` | Combined ping + traceroute showing packet loss per hop |
+| **Port / TCP** | `nc` | `nc -zv -w 3 192.168.1.50 443` | Quick TCP handshake connectivity check |
+| **Sockets** | `ss` | `ss -tulpn` | Inspect open listeners, backlog queue drops, and PIDs |
+| **TLS** | `openssl` | `openssl s_client -connect host:443 -servername host` | Inspect certificate expiry, SAN, and SNI handshake |
+| **Packets** | `tcpdump` | `tcpdump -nn -i any 'tcp port 443 and tcp[tcpflags] & (tcp-syn\|tcp-rst) != 0'` | Capture SYN and RST packets to detect drops or rejections |
+
+### The `curl` Latency Breakdown Recipe
+
+Create `curl-format.txt`:
+```text
+  time_namelookup:    %{time_namelookup}s\n
+  time_connect:       %{time_connect}s\n
+  time_appconnect:    %{time_appconnect}s (TLS)\n
+  time_pretransfer:   %{time_pretransfer}s\n
+  time_starttransfer: %{time_starttransfer}s (TTFB)\n
+  time_total:         %{time_total}s\n
+```
+Run: `curl -w "@curl-format.txt" -o /dev/null -s https://api.example.com`
+- If `time_namelookup` is high: DNS issue.
+- If `time_connect` - `time_namelookup` is high: Network routing / TCP RTT issue.
+- If `time_appconnect` - `time_connect` is high: TLS negotiation / cipher overhead.
+- If `time_starttransfer` - `time_appconnect` is high: Slow backend server execution (TTFB).
 
 ### Common Misconceptions
 

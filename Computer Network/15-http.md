@@ -35,11 +35,31 @@ Content-Type: application/json
 
 | Term | Meaning |
 |---|---|
-| Method | Semantic intent: GET, POST, PUT, DELETE, etc. |
-| Status code | Response category/result, e.g. 200, 404, 503 |
-| Header | Metadata such as content type or cache policy |
-| Origin | Scheme + host + port, relevant to browser policy |
-| Idempotent | Repeating has intended same effect (e.g. PUT ideally) |
+| **Safe Method** | Calling method does not mutate server state (`GET`, `HEAD`, `OPTIONS`) |
+| **Idempotent Method** | Multiple identical requests have the exact same effect on server state as one request (`PUT`, `DELETE`, `GET`) |
+| **Non-Idempotent** | Repeating request produces different state / side-effects (`POST`) |
+| **Origin** | Scheme + Host + Port tuple defining browser security sandbox (CORS/SOP) |
+| **Idempotency Key** | Unique client-generated token (UUID) in header to prevent duplicate charges/orders |
+
+### HTTP Status Code Quick-Reference
+
+| Code | Status Name | Category | Meaning & Interview Caveat |
+|---|---|---|---|
+| **200** | OK | Success | Standard success with payload |
+| **201** | Created | Success | Resource created (e.g. after POST); returns `Location` header |
+| **204** | No Content | Success | Action succeeded; response body is intentionally empty (e.g. DELETE) |
+| **301** | Moved Permanently | Redirection | Permanent redirect; browser caches new URL aggressively |
+| **304** | Not Modified | Redirection | Conditional GET cache hit (`ETag` / `If-None-Match` match); no body transferred |
+| **400** | Bad Request | Client Error | Malformed payload or validation error |
+| **401** | Unauthorized | Client Error | Authentication required or invalid credentials |
+| **403** | Forbidden | Client Error | Identity is authenticated, but user lacks permission/role |
+| **404** | Not Found | Client Error | Requested resource URI does not exist |
+| **409** | Conflict | Client Error | State conflict (e.g. duplicate key, concurrent edit version mismatch) |
+| **429** | Too Many Requests| Client Error | Rate limit exceeded; client should inspect `Retry-After` header |
+| **500** | Internal Server Error | Server Error | Unhandled exception inside the backend application |
+| **502** | Bad Gateway | Server Error | Reverse proxy/NGINX received invalid/dropped response from upstream app |
+| **503** | Service Unavailable | Server Error | Server temporarily overloaded or down for maintenance |
+| **504** | Gateway Timeout | Server Error | Upstream application took too long to answer reverse proxy/LB |
 
 ## Example
 
@@ -47,15 +67,17 @@ Content-Type: application/json
 
 ## Real-World Example
 
-APIs use `Cache-Control`, `ETag`, timeouts, idempotency keys, and explicit retry policies. A safe retry depends on operation semantics, not merely HTTP method names.
+Payment APIs (Stripe, Razorpay) enforce idempotency: `POST /v1/charges` accepts `Idempotency-Key: <uuid>`. If a network timeout occurs and the client retries, the server recognizes the key, skips duplicate credit card debit, and replays the cached 200 response.
 
 ## Important Properties
 
-| Version | Transport framing |
-|---|---|
-| HTTP/1.1 | Textual framing, persistent connections |
-| HTTP/2 | Binary frames over TCP |
-| HTTP/3 | Frames over QUIC |
+| Method | Safe? | Idempotent? | Typical Use Case |
+|---|---|---|---|
+| **GET** | Yes | Yes | Retrieve representation without mutation |
+| **POST** | No | No | Create subordinate resource / trigger complex action |
+| **PUT** | No | Yes | Replace resource completely or create at known URI |
+| **PATCH** | No | Usually No | Apply partial modifications to a resource |
+| **DELETE** | No | Yes | Remove resource (repeating yields same result) |
 
 ### Common Misconceptions
 

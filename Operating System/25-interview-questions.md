@@ -1050,7 +1050,7 @@ Each answer follows a speakable pattern: definition, why, how, example, and cave
 
 > **Interview Tip:** Use bounded pools and backpressure.
 
-**Follow-up & Answer:** **CPU-bound pool size?** Near cores. **I/O-bound?** More possible, but measure/bound by memory and downstream.
+**Follow-up & Answer:** **CPU-bound pool size?** Near cores. **I/O-bound?** More possible, but measure/bound by memory and downstream. **Python vs. Java?** In Python, CPU-bound tasks must use multi-processing (separate OS processes) due to the GIL; Java achieves true multi-core thread parallelism with worker pools.
 
 ### 88. How does OS scheduling affect API tail latency?
 

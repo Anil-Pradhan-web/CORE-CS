@@ -48,6 +48,6 @@ This is a revision-first OS knowledge base for SDE, backend, systems, and campus
 20. [Linux processes and commands](20-linux-processes-commands.md)
 21. [OS troubleshooting scenarios](21-os-troubleshooting.md)
 22. [What happens when a program runs?](22-program-runs.md)
-23. [What happens when a Java program runs?](23-java-program-runs.md)
+23. [What happens when Java and Python programs run?](23-java-python-program-runs.md)
 24. [OS in system design](24-os-system-design.md)
 25. [100 interview questions](25-interview-questions.md)

@@ -18,16 +18,138 @@ Production systems use the same patterns in work queues, caches, read replicas, 
 
 ## How It Works
 
-```text
-Producer-consumer (bounded buffer)
-producer: wait(empty); lock; add item; unlock; signal(full)
-consumer: wait(full);  lock; remove;  unlock; signal(empty)
+### 1. Producer-Consumer (Bounded Buffer with Condition Variables)
+
+#### Java Implementation
+```java
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class BoundedBuffer<T> {
+    private final Queue<T> queue = new LinkedList<>();
+    private final int capacity;
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notFull = lock.newCondition();
+    private final Condition notEmpty = lock.newCondition();
+
+    public BoundedBuffer(int capacity) { this.capacity = capacity; }
+
+    public void produce(T item) throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.size() == capacity) {
+                notFull.await(); // Wait while full; releases lock atomically
+            }
+            queue.add(item);
+            notEmpty.signal();  // Notify waiting consumer
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public T consume() throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.isEmpty()) {
+                notEmpty.await(); // Wait while empty
+            }
+            T item = queue.poll();
+            notFull.signal();   // Notify waiting producer
+            return item;
+        } finally {
+            lock.unlock();
+        }
+    }
+}
 ```
 
-1. Producer waits when buffer is full; consumer waits when empty.
-2. Mutex protects buffer indices/data.
-3. Readers-writers allows concurrent reads but excludes writer conflicts.
-4. Dining philosophers needs ordering, arbitrator, or try-lock/backoff to avoid circular wait.
+#### Python Implementation
+```python
+import threading
+from collections import deque
+
+class BoundedBuffer:
+    def __init__(self, capacity: int):
+        self.capacity = capacity
+        self.buffer = deque()
+        self.lock = threading.Lock()
+        self.not_full = threading.Condition(self.lock)
+        self.not_empty = threading.Condition(self.lock)
+
+    def produce(self, item):
+        with self.not_full:
+            while len(self.buffer) == self.capacity:
+                self.not_full.wait()
+            self.buffer.append(item)
+            self.not_empty.notify()
+
+    def consume(self):
+        with self.not_empty:
+            while len(self.buffer) == 0:
+                self.not_empty.wait()
+            item = self.buffer.popleft()
+            self.not_full.notify()
+            return item
+```
+
+---
+
+### 2. Readers-Writers Problem
+
+Multiple readers can read concurrently, but a writer requires exclusive access:
+
+```java
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+public class SharedCache {
+    private String data = "";
+    private final ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock(true); // Fair mode
+
+    public String readData() {
+        rwLock.readLock().lock();
+        try {
+            return this.data; // Multiple threads can read concurrently
+        } finally {
+            rwLock.readLock().unlock();
+        }
+    }
+
+    public void writeData(String newData) {
+        rwLock.writeLock().lock(); // Exclusive lock: blocks all readers and writers
+        try {
+            this.data = newData;
+        } finally {
+            rwLock.writeLock().unlock();
+        }
+    }
+}
+```
+
+---
+
+### 3. Dining Philosophers (Deadlock Prevention via Lock Ordering)
+
+Deadlock occurs if all 5 philosophers pick up their left fork simultaneously (Circular Wait).
+**Solution**: Break circular wait by enforcing strict ascending lock ordering (or picking up the lower-numbered fork first).
+
+```python
+import threading
+
+class DiningPhilosopher(threading.Thread):
+    def __init__(self, philosopher_id: int, left_fork: threading.Lock, right_fork: threading.Lock):
+        super().__init__()
+        self.id = philosopher_id
+        # Always acquire the lower-indexed fork first!
+        self.first_fork, self.second_fork = sorted([left_fork, right_fork], key=id)
+
+    def run(self):
+        # Strict lock ordering breaks circular wait condition
+        with self.first_fork:
+            with self.second_fork:
+                print(f"Philosopher {self.id} is eating.")
+```
 
 ## Important Terminology
 

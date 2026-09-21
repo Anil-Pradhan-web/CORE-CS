@@ -18,15 +18,80 @@ Process isolation improves safety but services still need to cooperate: shell pi
 
 ## How It Works
 
-1. Select data model: stream, message, shared region, or notification.
-2. Create/open IPC endpoint and enforce permissions.
-3. Send/receive data; coordinate ownership/ordering when needed.
-4. Handle blocking, buffering, shutdown, peer failure, and backpressure.
+### The IPC Spectrum
 
 ```text
-Pipe: producer bytes → kernel buffer → consumer bytes
-Shared memory: Process A ↔ shared pages ↔ Process B  (+ lock required)
-Socket: Process A ⇄ kernel network stack ⇄ Process B
+┌─────────────────┬──────────────────────────────────┬────────────────────────┐
+│  IPC Mechanism  │         Kernel Overhead          │       Best Used For    │
+├─────────────────┼──────────────────────────────────┼────────────────────────┤
+│ Pipes           │ Medium (double copy to/from buf) │ Parent-child streams   │
+│ Shared Memory   │ Lowest (zero copy after mapping) │ High-speed local bulk  │
+│ Unix Sockets    │ Low (kernel buffer, no TCP stack)│ Robust local services  │
+│ Network Sockets │ Highest (full TCP/IP stack)      │ Distributed machines   │
+└─────────────────┴──────────────────────────────────┴────────────────────────┘
+```
+
+### 1. Anonymous Pipes (Parent-Child Communication)
+
+A unidirectional byte channel created in the kernel:
+
+```python
+import os
+
+# Create kernel pipe: r (read end), w (write end)
+r_fd, w_fd = os.pipe()
+
+pid = os.fork()
+if pid == 0:
+    # Child process: closes unused write end, reads message
+    os.close(w_fd)
+    msg = os.read(r_fd, 1024)
+    print(f"Child received: {msg.decode()}")
+    os.close(r_fd)
+else:
+    # Parent process: closes unused read end, writes message
+    os.close(r_fd)
+    os.write(w_fd, b"Hello from parent process!")
+    os.close(w_fd)
+```
+
+---
+
+### 2. Shared Memory (`mmap` / POSIX `shm_open`)
+
+The fastest IPC because both processes map the same physical RAM pages into their virtual address spaces:
+
+```python
+import mmap
+import os
+
+# Create an anonymous shared memory map backed by RAM
+shm = mmap.mmap(-1, 4096, flags=mmap.MAP_SHARED | mmap.MAP_ANONYMOUS)
+
+pid = os.fork()
+if pid == 0:
+    # Child writes to shared memory
+    shm.seek(0)
+    shm.write(b"Fast shared memory message")
+else:
+    os.wait() # Wait for child
+    shm.seek(0)
+    print(f"Parent read: {shm.read(26).decode()}")
+```
+
+---
+
+### 3. Unix Domain Sockets (`AF_UNIX`) vs. Network Sockets (`AF_INET`)
+
+Unix Domain Sockets use the standard Socket API but bypass the entire TCP/IP network stack (no checksumming, packet sequencing, or NIC processing), providing 2x higher throughput than `127.0.0.1`:
+
+```python
+import socket
+
+# Unix Domain Socket (Local IPC via filesystem path)
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind("/tmp/app_service.sock")
+server.listen(10)
 ```
 
 ## Important Terminology
